@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Air Whiteboard – Gesture Drawing</title>
+<link rel="icon" href="data:,">
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Bangers&family=Nunito:wght@400;600;700;900&display=swap');
 
@@ -333,7 +334,7 @@ function resize() {
   camCanvas.width   = W; camCanvas.height   = H;
   boardCanvas.width = W; boardCanvas.height = H;
   // Redraw strokes after resize
-  redrawStrokes();
+  if (typeof strokes !== 'undefined') redrawStrokes();
 }
 resize();
 window.addEventListener('resize', resize);

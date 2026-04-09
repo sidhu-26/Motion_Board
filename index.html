@@ -302,9 +302,9 @@
     <div class="load-title">✋ Air<br>Whiteboard</div>
     <div class="load-sub">Draw in the air with your finger. Teach, create, and express — no stylus needed.</div>
     <div class="guide">
-      <div class="guide-item"><div class="gi">☝️</div><div class="gt">1 finger<br><b>Draw</b></div></div>
-      <div class="guide-item"><div class="gi">✌️</div><div class="gt">2 fingers<br><b>Erase</b></div></div>
-      <div class="guide-item"><div class="gi">🤚</div><div class="gt">Open palm<br><b>Hover</b></div></div>
+      <div class="guide-item"><div class="gi">☝️</div><div class="gt">1 finger<br><b>Hover</b></div></div>
+      <div class="guide-item"><div class="gi">✌️</div><div class="gt">2 fingers<br><b>Draw</b></div></div>
+      <div class="guide-item"><div class="gi">🖖</div><div class="gt">3 fingers<br><b>Erase</b></div></div>
       <div class="guide-item"><div class="gi">👊</div><div class="gt">Fist<br><b>Clear all</b></div></div>
     </div>
     <button id="startBtn" disabled>Loading…</button>
@@ -365,6 +365,11 @@ var GESTURE_SMOOTH = 5;
 
 // Fist cooldown (prevent repeated clears)
 var fistCooldown = 0;
+
+// Hover click state
+var hoveredEl = null;
+var hoverFrames = 0;
+var HOVER_CLICK_FRAMES = 20;
 
 // Shake detection for undo (optional — we keep button undo)
 var prevFx = -999;
@@ -444,8 +449,9 @@ function detectGesture(lm) {
 
   if (fingersUp === 0 && !thumbUp) return 'clear';  // fist
   if (fingersUp >= 4)              return 'hover';   // open palm
-  if (fingersUp === 1 && upFlags[0]) return 'draw';  // index only
-  if (fingersUp === 2 && upFlags[0] && upFlags[1]) return 'erase'; // index+middle
+  if (fingersUp === 1 && upFlags[0]) return 'hover'; // index only
+  if (fingersUp === 2 && upFlags[0] && upFlags[1]) return 'draw';  // index+middle
+  if (fingersUp === 3 && upFlags[0] && upFlags[1] && upFlags[2]) return 'erase'; // index+middle+ring
   return 'hover';
 }
 
@@ -597,6 +603,30 @@ function onResults(results) {
     lastX = -1; lastY = -1;
   }
 
+  // ── UI SELECTION ──
+  if (smoothG === 'hover' && fx >= 0 && fy >= 0) {
+    var el = document.elementFromPoint(fx, fy);
+    var clickTarget = el ? el.closest('.color-btn, .size-btn, .tool-btn, button') : null;
+    if (clickTarget) {
+      if (clickTarget === hoveredEl) {
+        hoverFrames++;
+        if (hoverFrames === HOVER_CLICK_FRAMES) {
+          clickTarget.click();
+          hoverFrames = -20; // cooldown prevents rapid-clicking
+        }
+      } else {
+        hoveredEl = clickTarget;
+        hoverFrames = 1;
+      }
+    } else {
+      hoveredEl = null;
+      hoverFrames = 0;
+    }
+  } else {
+    hoveredEl = null;
+    hoverFrames = 0;
+  }
+
   drawCursor(fx, fy, smoothG);
 }
 
@@ -641,6 +671,16 @@ function drawCursor(x, y, g) {
     camCtx.setLineDash([4, 4]);
     camCtx.stroke();
     camCtx.setLineDash([]);
+  }
+
+  // Hover UI click progress
+  if (g === 'hover' && hoverFrames > 0) {
+    camCtx.beginPath();
+    var pct = Math.max(0, Math.min(hoverFrames / HOVER_CLICK_FRAMES, 1));
+    camCtx.arc(x, y, radius + 12, -Math.PI / 2, -Math.PI / 2 + (Math.PI * 2 * pct));
+    camCtx.strokeStyle = '#fff';
+    camCtx.lineWidth = 3;
+    camCtx.stroke();
   }
 }
 

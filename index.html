@@ -305,7 +305,7 @@
       <div class="guide-item"><div class="gi">☝️</div><div class="gt">1 finger<br><b>Hover</b></div></div>
       <div class="guide-item"><div class="gi">✌️</div><div class="gt">2 fingers<br><b>Draw</b></div></div>
       <div class="guide-item"><div class="gi">🖖</div><div class="gt">3 fingers<br><b>Erase</b></div></div>
-      <div class="guide-item"><div class="gi">👊</div><div class="gt">Fist<br><b>Clear all</b></div></div>
+      <div class="guide-item"><div class="gi">👋</div><div class="gt">Wave<br><b>Clear all</b></div></div>
     </div>
     <button id="startBtn" disabled>Loading…</button>
     <div class="load-bar-wrap"><div class="load-bar-fill" id="barFill"></div></div>
@@ -363,13 +363,14 @@ var curStroke = null;      // currently active stroke
 var gestureBuf = [];
 var GESTURE_SMOOTH = 5;
 
-// Fist cooldown (prevent repeated clears)
-var fistCooldown = 0;
-
 // Hover click state
 var hoveredEl = null;
 var hoverFrames = 0;
 var HOVER_CLICK_FRAMES = 20;
+
+// Wave detection
+var wavePoints = [];
+var lastWaveTime = 0;
 
 // Shake detection for undo (optional — we keep button undo)
 var prevFx = -999;
@@ -380,11 +381,6 @@ var shakeFrames = 0;
 // ═══════════════════════════════════════════════════════════
 function redrawStrokes() {
   bCtx.clearRect(0, 0, W, H);
-  // Board background
-  if (mode === 'board') {
-    bCtx.fillStyle = '#1a1a2e';
-    bCtx.fillRect(0, 0, W, H);
-  }
   for (var s = 0; s < strokes.length; s++) {
     drawStroke(strokes[s]);
   }
@@ -447,8 +443,7 @@ function detectGesture(lm) {
   // Thumb: compare tip x to IP joint
   var thumbUp = Math.abs(lm[4].x - lm[2].x) > 0.04;
 
-  if (fingersUp === 0 && !thumbUp) return 'clear';  // fist
-  if (fingersUp >= 4)              return 'hover';   // open palm
+  if (fingersUp >= 4)              return 'palm';    // open palm (used for waving)
   if (fingersUp === 1 && upFlags[0]) return 'hover'; // index only
   if (fingersUp === 2 && upFlags[0] && upFlags[1]) return 'draw';  // index+middle
   if (fingersUp === 3 && upFlags[0] && upFlags[1] && upFlags[2]) return 'erase'; // index+middle+ring
@@ -477,7 +472,7 @@ var gestureMap = {
   draw:  { icon:'☝️', label:'Drawing',  color:'#44aaff' },
   erase: { icon:'✌️', label:'Erasing',  color:'#ff6b6b' },
   hover: { icon:'🤚', label:'Hovering', color:'#aaaaaa' },
-  clear: { icon:'👊', label:'Clearing…',color:'#ff4444' },
+  palm:  { icon:'👋', label:'Wave to Clear', color:'#aaaaaa' }
 };
 
 function updateHud(g) {
@@ -501,7 +496,8 @@ function onResults(results) {
     camCtx.fillStyle = 'rgba(0,0,0,0.18)';
     camCtx.fillRect(0, 0, W, H);
   } else if (mode === 'board') {
-    // Board bg is drawn on boardCanvas via redrawStrokes
+    camCtx.fillStyle = '#1a1a2e';
+    camCtx.fillRect(0, 0, W, H);
   }
 
   // No hand detected
@@ -525,16 +521,6 @@ function onResults(results) {
   var smoothG = smoothGesture(rawG);
   gesture    = smoothG;
   updateHud(smoothG);
-
-  // ── FIST → clear
-  if (smoothG === 'clear') {
-    fistCooldown++;
-    if (fistCooldown === 8) {
-      clearBoard();
-    }
-  } else {
-    fistCooldown = 0;
-  }
 
   // ── DRAW
   if (smoothG === 'draw') {
@@ -603,8 +589,38 @@ function onResults(results) {
     lastX = -1; lastY = -1;
   }
 
+  // ── WAVE TO CLEAR ──
+  var now = Date.now();
+  if (smoothG === 'palm') {
+    wavePoints.push({x: fx, t: now});
+    while (wavePoints.length > 0 && now - wavePoints[0].t > 1500) wavePoints.shift();
+    
+    var dirChanges = 0;
+    var curDir = 0;
+    var lastExtremumX = wavePoints[0] ? wavePoints[0].x : fx;
+    for (var i = 1; i < wavePoints.length; i++) {
+       if (Math.abs(wavePoints[i].x - lastExtremumX) > W * 0.12) { // 12% width swing
+         var d = wavePoints[i].x > lastExtremumX ? 1 : -1;
+         if (curDir !== 0 && d !== curDir) {
+           dirChanges++;
+         }
+         curDir = d;
+         lastExtremumX = wavePoints[i].x;
+       }
+    }
+    if (dirChanges >= 3 && (now - lastWaveTime > 2500)) {
+      clearBoard();
+      showToast('👋 Cleared by Waving');
+      lastWaveTime = now;
+      wavePoints = [];
+    }
+  } else {
+    wavePoints = [];
+  }
+
   // ── UI SELECTION ──
-  if (smoothG === 'hover' && fx >= 0 && fy >= 0) {
+  var isCursor = (smoothG === 'hover' || smoothG === 'palm');
+  if (isCursor && fx >= 0 && fy >= 0) {
     var el = document.elementFromPoint(fx, fy);
     var clickTarget = el ? el.closest('.color-btn, .size-btn, .tool-btn, button') : null;
     if (clickTarget) {
@@ -627,7 +643,7 @@ function onResults(results) {
     hoverFrames = 0;
   }
 
-  drawCursor(fx, fy, smoothG);
+  drawCursor(fx, fy, smoothG === 'palm' ? 'hover' : smoothG);
 }
 
 // ═══════════════════════════════════════════════════════════

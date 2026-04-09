@@ -37,24 +37,35 @@
   /* ── TOOLBAR ── */
   #toolbar {
     position:absolute;
-    left:50%;
-    bottom:28px;
-    transform:translateX(-50%);
+    right:20px;
+    top:50%;
+    transform:translateY(-50%);
     display:flex;
+    flex-direction:column;
     align-items:center;
     gap:10px;
     background:rgba(20,20,28,0.92);
     border:1.5px solid rgba(255,255,255,0.12);
     border-radius:28px;
-    padding:10px 18px;
+    padding:18px 10px;
     backdrop-filter:blur(16px);
     z-index:50;
-    flex-wrap:wrap;
-    justify-content:center;
-    max-width:96vw;
+    opacity:0.3;
+    transition:opacity 0.3s;
+  }
+  #toolbar:hover, #toolbar.hovered {
+    opacity:1;
   }
 
-  .t-sep { width:1px; height:36px; background:rgba(255,255,255,0.12); margin:0 4px; }
+  .t-sep { width:36px; height:1px; background:rgba(255,255,255,0.12); margin:4px 0; }
+  
+  /* Cursor canvas (always on top) */
+  #cursorCanvas {
+    position:absolute; inset:0;
+    width:100%; height:100%;
+    pointer-events:none;
+    z-index:999;
+  }
 
   /* Colors */
   .color-btn {
@@ -251,6 +262,8 @@
   <canvas id="camCanvas"></canvas>
   <!-- Drawing layer -->
   <canvas id="boardCanvas"></canvas>
+  <!-- Top cursor layer -->
+  <canvas id="cursorCanvas"></canvas>
 
   <!-- Gesture HUD -->
   <div id="gestureHud">
@@ -322,8 +335,10 @@
 var video     = document.getElementById('webcam');
 var camCanvas = document.getElementById('camCanvas');
 var boardCanvas = document.getElementById('boardCanvas');
+var cursorCanvas = document.getElementById('cursorCanvas');
 var camCtx    = camCanvas.getContext('2d');
 var bCtx      = boardCanvas.getContext('2d');
+var cursorCtx = cursorCanvas.getContext('2d');
 
 var W = window.innerWidth;
 var H = window.innerHeight;
@@ -333,6 +348,7 @@ function resize() {
   H = window.innerHeight;
   camCanvas.width   = W; camCanvas.height   = H;
   boardCanvas.width = W; boardCanvas.height = H;
+  cursorCanvas.width = W; cursorCanvas.height = H;
   // Redraw strokes after resize
   if (typeof strokes !== 'undefined') redrawStrokes();
 }
@@ -488,6 +504,7 @@ function updateHud(g) {
 function onResults(results) {
   // ── Draw cam canvas
   camCtx.clearRect(0, 0, W, H);
+  cursorCtx.clearRect(0, 0, W, H);
   if (mode === 'ar' && video.readyState >= 2) {
     camCtx.save();
     camCtx.translate(W, 0); camCtx.scale(-1, 1);
@@ -642,6 +659,16 @@ function onResults(results) {
     hoveredEl = null;
     hoverFrames = 0;
   }
+  
+  // ── TOOLBAR HOVER VISIBILITY ──
+  if (fx >= 0 && fy >= 0) {
+    var tb = document.getElementById('toolbar');
+    var tbRect = tb.getBoundingClientRect();
+    // Use a padding of 50px for fading it in slightly before touching
+    var isNear = fx > tbRect.left - 50 && fx < tbRect.right + 50 && fy > tbRect.top - 50 && fy < tbRect.bottom + 50;
+    if (isNear) tb.classList.add('hovered');
+    else tb.classList.remove('hovered');
+  }
 
   drawCursor(fx, fy, smoothG === 'palm' ? 'hover' : smoothG);
 }
@@ -650,7 +677,6 @@ function onResults(results) {
 //  CURSOR / FINGER DOT
 // ═══════════════════════════════════════════════════════════
 function drawCursor(x, y, g) {
-  // Draw on cam canvas (top layer)
   if (x < 0) return;
 
   var color = g === 'draw'  ? penColor :
@@ -660,43 +686,43 @@ function drawCursor(x, y, g) {
   var radius = g === 'erase' ? penSize * 4 : 14;
 
   // Outer ring
-  camCtx.beginPath();
-  camCtx.arc(x, y, radius + 6, 0, Math.PI * 2);
-  camCtx.strokeStyle = color + '55';
-  camCtx.lineWidth   = 2;
-  camCtx.stroke();
+  cursorCtx.beginPath();
+  cursorCtx.arc(x, y, radius + 6, 0, Math.PI * 2);
+  cursorCtx.strokeStyle = color + '55';
+  cursorCtx.lineWidth   = 2;
+  cursorCtx.stroke();
 
   // Inner dot
-  camCtx.beginPath();
-  camCtx.arc(x, y, radius, 0, Math.PI * 2);
-  var grd = camCtx.createRadialGradient(x, y, 0, x, y, radius);
+  cursorCtx.beginPath();
+  cursorCtx.arc(x, y, radius, 0, Math.PI * 2);
+  var grd = cursorCtx.createRadialGradient(x, y, 0, x, y, radius);
   grd.addColorStop(0, color + 'ff');
   grd.addColorStop(1, color + '33');
-  camCtx.fillStyle   = grd;
-  camCtx.shadowBlur  = 20;
-  camCtx.shadowColor = color;
-  camCtx.fill();
-  camCtx.shadowBlur  = 0;
+  cursorCtx.fillStyle   = grd;
+  cursorCtx.shadowBlur  = 20;
+  cursorCtx.shadowColor = color;
+  cursorCtx.fill();
+  cursorCtx.shadowBlur  = 0;
 
   // Eraser circle outline
   if (g === 'erase') {
-    camCtx.beginPath();
-    camCtx.arc(x, y, penSize * 4, 0, Math.PI * 2);
-    camCtx.strokeStyle = '#ff6b6b88';
-    camCtx.lineWidth   = 2;
-    camCtx.setLineDash([4, 4]);
-    camCtx.stroke();
-    camCtx.setLineDash([]);
+    cursorCtx.beginPath();
+    cursorCtx.arc(x, y, penSize * 4, 0, Math.PI * 2);
+    cursorCtx.strokeStyle = '#ff6b6b88';
+    cursorCtx.lineWidth   = 2;
+    cursorCtx.setLineDash([4, 4]);
+    cursorCtx.stroke();
+    cursorCtx.setLineDash([]);
   }
 
   // Hover UI click progress
   if (g === 'hover' && hoverFrames > 0) {
-    camCtx.beginPath();
+    cursorCtx.beginPath();
     var pct = Math.max(0, Math.min(hoverFrames / HOVER_CLICK_FRAMES, 1));
-    camCtx.arc(x, y, radius + 12, -Math.PI / 2, -Math.PI / 2 + (Math.PI * 2 * pct));
-    camCtx.strokeStyle = '#fff';
-    camCtx.lineWidth = 3;
-    camCtx.stroke();
+    cursorCtx.arc(x, y, radius + 12, -Math.PI / 2, -Math.PI / 2 + (Math.PI * 2 * pct));
+    cursorCtx.strokeStyle = '#fff';
+    cursorCtx.lineWidth = 3;
+    cursorCtx.stroke();
   }
 }
 
